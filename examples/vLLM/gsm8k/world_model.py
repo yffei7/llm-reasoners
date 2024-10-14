@@ -4,6 +4,7 @@ from collections import defaultdict
 from reasoners import WorldModel, LanguageModel
 import utils
 from reasoners.base import Example
+from concurrent.futures import ThreadPoolExecutor
 
 
 class SubResult(NamedTuple):
@@ -42,7 +43,8 @@ class GSM8kWorldModel(WorldModel[GSM8kState, GSM8kAction, GSM8kExample]):
                  top_k=50,
                  top_p=0.95,
                  early_stop_base=None,
-                 early_stop_threshold=1.) -> None:
+                 early_stop_threshold=1.,
+                 max_workers=10) -> None:
         super().__init__()
         self.base_model = base_model
         self.batch_size = batch_size
@@ -55,6 +57,7 @@ class GSM8kWorldModel(WorldModel[GSM8kState, GSM8kAction, GSM8kExample]):
         self.top_k = top_k
         self.top_p = top_p
         self.answer = ""
+        self.executor = ThreadPoolExecutor(max_workers)
 
     def update_example(self, example: Example, prompt: GSM8kPromptDict = None) -> None:
         super().update_example(example["question"], prompt)
@@ -90,18 +93,22 @@ class GSM8kWorldModel(WorldModel[GSM8kState, GSM8kAction, GSM8kExample]):
         result = ""
         for start1 in range(0, self.n_confidence, self.early_stop_base):
             stop1 = min(start1 + self.early_stop_base, self.n_confidence)
-
+            futures = []
             for start in range(start1, stop1, self.batch_size):
                 stop = min(start + self.batch_size, stop1)
                 num = stop - start
-
-                outputs = self.base_model.generate([model_input] * num,
-                                                   hide_input=True,
-                                                   do_sample=True,
-                                                   temperature=self.temperature,
-                                                   top_k=self.top_k,
-                                                   top_p=self.top_p,
-                                                   eos_token_id='\n').text
+                futures.append(self.executor.submit(
+                    self.base_model.generate,
+                    [model_input] * num,
+                    hide_input=True,
+                    do_sample=True,
+                    temperature=self.temperature,
+                    top_k=self.top_k,
+                    top_p=self.top_p,
+                    eos_token_id='\n'
+                ))
+            for future in futures:
+                outputs = future.result().text
                 for output in outputs:
                     result = output.strip()
                     answer = utils.retrieve_answer(result)               

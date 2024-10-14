@@ -6,7 +6,7 @@ import numpy as np
 from world_model import GSM8kState, GSM8kAction, GSM8kPromptDict
 from reasoners import SearchConfig, LanguageModel
 from reasoners.base import Example
-
+from concurrent.futures import ThreadPoolExecutor
 class GSM8kUsefulPrompt(TypedDict):
     input: str
     question_prefix: str
@@ -30,7 +30,8 @@ class GSM8kConfig(SearchConfig):
                  force_overall_prompt_on_overall_question=True,
                  force_overall_question_on_overall_prompt=True,
                  output_extractor=None,
-                 answer_extractor=None) -> None:
+                 answer_extractor=None,
+                 max_workers=20) -> None:
         super().__init__()
         self.base_model = base_model
         self.useful_prompt = useful_prompt
@@ -52,6 +53,7 @@ class GSM8kConfig(SearchConfig):
         self.answer = ""
         self.output_extractor = output_extractor
         self.answer_extractor = answer_extractor
+        self.executor = ThreadPoolExecutor(max_workers, thread_name_prefix='search_config')
 
     def update_example(self, example: Example, prompt: GSM8kPromptDict = None) -> None:
         super().update_example(example["question"], prompt)
@@ -88,15 +90,21 @@ class GSM8kConfig(SearchConfig):
         n_actions = 1 if at_depth_limit else self.n_actions
         temperature = 0 if at_depth_limit else self.temperature
         outputs = []
+        futures = []
         for idx in range(0, n_actions, self.batch_size):
             n_samples = min(n_actions - idx, self.batch_size)
-            outputs += self.base_model.generate([model_input] * n_samples,
-                                                hide_input=True,
-                                                do_sample=True,
-                                                temperature=temperature,
-                                                top_k=self.top_k,
-                                                top_p=self.top_p,
-                                                eos_token_id='\n').text
+            futures.append(self.executor.submit(
+                self.base_model.generate,
+                [model_input] * n_samples,
+                hide_input=True,
+                do_sample=True,
+                temperature=temperature,
+                top_k=self.top_k,
+                top_p=self.top_p,
+                eos_token_id='\n'
+            ))
+        for future in futures:
+            outputs += future.result().text
 
         outputs = [output.strip() for output in outputs]
         if at_depth_limit:
