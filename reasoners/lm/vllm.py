@@ -62,19 +62,21 @@ class VllmModel(LanguageModel):
                 # sleep several seconds to avoid rate limit
                 if rate_limit_per_min is not None:
                     time.sleep(60 / rate_limit_per_min)
-                messages = [{"role": "user", "content": prompt}]
-                response = self.client.chat.completions.create(
+                response = self.client.completions.create(
                     model=self.model,
-                    messages=messages,
+                    prompt=prompt,
                     max_tokens=max_tokens,
-                    temperature=temperature,
+                    temperature=gpt_temperature,
                     top_p=top_p,
                     n=num_return_sequences,
-                    stop=eos_token_id
+                    stop=eos_token_id,
+                    logprobs=logprobs,
+                    **kwargs
                 )
+
                 return GenerateOutput(
-                    text=[choice.message.content for choice in response.choices],
-                    log_prob=None
+                    text=[choice.text for choice in response.choices],
+                    log_prob=[choice.logprobs for choice in response.choices]
                 )
             
             except Exception as e:

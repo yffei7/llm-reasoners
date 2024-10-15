@@ -79,8 +79,8 @@ class GSM8kConfig(SearchConfig):
             f.write(self.prompt_examples)
             f.write(self.prompt["question_prefix"].format(idx=self.n_shots + 1, question=self.example) + "\n")
             for idx, (q, a, _) in enumerate(state):
-                f.write(
-                    self.prompt["subquestion_prefix"].format(idx=self.n_shots + 1, sub_idx=idx + 1) + " " + q + "\n")
+                subquestion_prefix = self.prompt["subquestion_prefix"].format(idx=self.n_shots + 1, sub_idx=idx + 1)
+                f.write(q + "\n" if subquestion_prefix in q else subquestion_prefix + " " + q + "\n")
                 f.write(self.prompt["answer_prefix"].format(idx=self.n_shots + 1, sub_idx=idx + 1) + " " + a + "\n")
             # f.write(self.prompt["subquestion_prefix"].format(idx=self.n_shots + 1, sub_idx=len(state) + 1))
             if at_depth_limit := self.force_terminating_on_depth_limit and len(state) + 1 >= self.depth_limit:
@@ -93,11 +93,14 @@ class GSM8kConfig(SearchConfig):
         futures = []
         for idx in range(0, n_actions, self.batch_size):
             n_samples = min(n_actions - idx, self.batch_size)
+            # outputs += self.base_model.generate([model_input] * n_samples,
+            #                                     temperature=temperature,
+            #                                     top_k=self.top_k,
+            #                                     top_p=self.top_p,
+            #                                     eos_token_id='\n').text
             futures.append(self.executor.submit(
                 self.base_model.generate,
                 [model_input] * n_samples,
-                hide_input=True,
-                do_sample=True,
                 temperature=temperature,
                 top_k=self.top_k,
                 top_p=self.top_p,

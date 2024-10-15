@@ -64,6 +64,9 @@ class GSM8KCustomEvaluator(GSM8KEvaluator):
                                             desc=self._dataset_name,
                                             disable=self.disable_tqdm)):
             
+            if i == 10:
+                break
+            
             algo_output = reasoner(example,
                                     prompt=self.sample_prompt(
                                         shuffle_prompt=shuffle_prompt,
