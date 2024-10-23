@@ -12,7 +12,6 @@ from search_config import GSM8kConfig, GSM8kUsefulPrompt
 import utils
 from reasoners.lm.vllm import VllmModel
 from gsm8k_custom import GSM8KCustomEvaluator
-from mcts_custom import MCTSCustom
 
 
 def node_visualizer(x: MCTSNode):
@@ -23,7 +22,7 @@ def node_visualizer(x: MCTSNode):
 def rap_gsm8k(base_model: LanguageModel,
               prompt: GSM8kPromptDict,
               useful_prompt: GSM8kUsefulPrompt,
-              search_algo: Type[SearchAlgorithm] = MCTSCustom,
+              search_algo: Type[SearchAlgorithm] = MCTS,
               resume: int = 0,
               n_action: int = 4,
               n_confidence: int = 8,
@@ -42,6 +41,7 @@ def rap_gsm8k(base_model: LanguageModel,
               disable_tqdm: bool = False,
               output_trace_in_each_iter: bool = True,
               aggregate: bool = True,
+              max_workers = 10,
               **search_algo_params):
 
     if aggregate:

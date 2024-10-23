@@ -30,8 +30,7 @@ class GSM8kConfig(SearchConfig):
                  force_overall_prompt_on_overall_question=True,
                  force_overall_question_on_overall_prompt=True,
                  output_extractor=None,
-                 answer_extractor=None,
-                 max_workers=20) -> None:
+                 answer_extractor=None) -> None:
         super().__init__()
         self.base_model = base_model
         self.useful_prompt = useful_prompt
@@ -53,7 +52,7 @@ class GSM8kConfig(SearchConfig):
         self.answer = ""
         self.output_extractor = output_extractor
         self.answer_extractor = answer_extractor
-        self.executor = ThreadPoolExecutor(max_workers, thread_name_prefix='search_config')
+        # self.executor = ThreadPoolExecutor(max_workers, thread_name_prefix='search_config')
 
     def update_example(self, example: Example, prompt: GSM8kPromptDict = None) -> None:
         super().update_example(example["question"], prompt)
@@ -79,35 +78,22 @@ class GSM8kConfig(SearchConfig):
             f.write(self.prompt_examples)
             f.write(self.prompt["question_prefix"].format(idx=self.n_shots + 1, question=self.example) + "\n")
             for idx, (q, a, _) in enumerate(state):
-                subquestion_prefix = self.prompt["subquestion_prefix"].format(idx=self.n_shots + 1, sub_idx=idx + 1)
-                f.write(q + "\n" if subquestion_prefix in q else subquestion_prefix + " " + q + "\n")
+                f.write(
+                    self.prompt["subquestion_prefix"].format(idx=self.n_shots + 1, sub_idx=idx + 1) + " " + q + "\n")
                 f.write(self.prompt["answer_prefix"].format(idx=self.n_shots + 1, sub_idx=idx + 1) + " " + a + "\n")
-            # f.write(self.prompt["subquestion_prefix"].format(idx=self.n_shots + 1, sub_idx=len(state) + 1))
+            f.write(self.prompt["subquestion_prefix"].format(idx=self.n_shots + 1, sub_idx=len(state) + 1))
             if at_depth_limit := self.force_terminating_on_depth_limit and len(state) + 1 >= self.depth_limit:
                 f.write(" " + self.prompt["overall_question_prefix"])
             model_input = f.getvalue()
 
         n_actions = 1 if at_depth_limit else self.n_actions
         temperature = 0 if at_depth_limit else self.temperature
-        outputs = []
-        futures = []
-        for idx in range(0, n_actions, self.batch_size):
-            n_samples = min(n_actions - idx, self.batch_size)
-            # outputs += self.base_model.generate([model_input] * n_samples,
-            #                                     temperature=temperature,
-            #                                     top_k=self.top_k,
-            #                                     top_p=self.top_p,
-            #                                     eos_token_id='\n').text
-            futures.append(self.executor.submit(
-                self.base_model.generate,
-                [model_input] * n_samples,
-                temperature=temperature,
-                top_k=self.top_k,
-                top_p=self.top_p,
-                eos_token_id='\n'
-            ))
-        for future in futures:
-            outputs += future.result().text
+        outputs = self.base_model.generate(model_input,
+                                            num_return_sequences=n_actions,
+                                            temperature=temperature,
+                                            top_k=self.top_k,
+                                            top_p=self.top_p,
+                                            eos_token_id='\n').text
 
         outputs = [output.strip() for output in outputs]
         if at_depth_limit:
@@ -136,11 +122,11 @@ class GSM8kConfig(SearchConfig):
     def reward(self, state: GSM8kState, action: GSM8kAction,
                r_useful: float = None,
                confidence: float = None) -> tuple[float, dict]:
-        if len(state) > 0 and "Now we can answer" in state[-1].sub_question:
+        if action is not None and len(action) > 0 and "Now we can answer" in action:
             output = self.output_extractor(action)
             answer = self.answer_extractor(self.answer)
             if output is None or answer is None:
-                return self.calculate_reward(0)
-            return self.calculate_reward(int(output == answer))
+                return self.calculate_reward(0, confidence)
+            return self.calculate_reward(int(output == answer), confidence)
         else:
-            return self.calculate_reward(0)
+            return self.calculate_reward(0, confidence)

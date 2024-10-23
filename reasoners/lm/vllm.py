@@ -7,8 +7,6 @@ import time
 from reasoners.base import LanguageModel, GenerateOutput
 from openai import OpenAI
 
-PROMPT_TEMPLATE_ANSWER = "Your response need to be ended with \"So the answer is\"\n\n"
-PROMPT_TEMPLATE_CONTINUE = "Please continue to answer the last question, following the format of previous examples. Don't say any other words.\n\n"
 
 class VllmModel(LanguageModel):
     def __init__(self, model:str, max_tokens:int = 2048, temperature=0.0, additional_prompt=None):
@@ -30,7 +28,6 @@ class VllmModel(LanguageModel):
                 eos_token_id: Optional[str] = None,
                 logprobs: Optional[int] = None,
                 temperature = None,
-                additional_prompt=None,
                 retry = 64,
                 top_k: int = 50,
                 **kwargs) -> GenerateOutput:
@@ -41,14 +38,6 @@ class VllmModel(LanguageModel):
             if(len(prompt) > 1):
                 num_return_sequences = len(prompt)
             prompt = prompt[0]
-        if additional_prompt is None and self.additional_prompt is not None:
-            additional_prompt = self.additional_prompt
-        elif additional_prompt is not None and self.additional_prompt is not None:
-            print("Warning: additional_prompt set in constructor is overridden.")
-        if additional_prompt == "ANSWER":
-            prompt = PROMPT_TEMPLATE_ANSWER + prompt
-        elif additional_prompt == "CONTINUE":
-            prompt = PROMPT_TEMPLATE_CONTINUE + prompt
 
         if max_tokens is None:
             max_tokens = self.max_tokens
@@ -90,12 +79,12 @@ class VllmModel(LanguageModel):
                               prompt: Union[str, list[str]],
                               candidates: Union[list[str], list[list[str]]],
                               **kwargs) -> list[np.ndarray]:
-        raise NotImplementedError("vLLMModel does not support get_next_token_logits")
+        raise NotImplementedError("to do")
 
     def get_loglikelihood(self,
                           prompt: Union[str, list[str]],
                           **kwargs) -> list[np.ndarray]:
-        raise NotImplementedError("vLLMModel does not support get_log_prob")
+        raise NotImplementedError("to do")
 
 
 if __name__ == '__main__':

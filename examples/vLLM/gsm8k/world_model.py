@@ -43,8 +43,7 @@ class GSM8kWorldModel(WorldModel[GSM8kState, GSM8kAction, GSM8kExample]):
                  top_k=50,
                  top_p=0.95,
                  early_stop_base=None,
-                 early_stop_threshold=1.,
-                 max_workers=10) -> None:
+                 early_stop_threshold=1.) -> None:
         super().__init__()
         self.base_model = base_model
         self.batch_size = batch_size
@@ -57,7 +56,6 @@ class GSM8kWorldModel(WorldModel[GSM8kState, GSM8kAction, GSM8kExample]):
         self.top_k = top_k
         self.top_p = top_p
         self.answer = ""
-        self.executor = ThreadPoolExecutor(max_workers)
 
     def update_example(self, example: Example, prompt: GSM8kPromptDict = None) -> None:
         super().update_example(example["question"], prompt)
@@ -81,11 +79,11 @@ class GSM8kWorldModel(WorldModel[GSM8kState, GSM8kAction, GSM8kExample]):
             f.write(self.prompt_examples)
             f.write(self.prompt["question_prefix"].format(idx=self.n_shots + 1, question=self.example) + "\n")
             for idx, (q, a, _) in enumerate(state):
-                subquestion_prefix = self.prompt["subquestion_prefix"].format(idx=self.n_shots + 1, sub_idx=idx + 1)
-                f.write(q + "\n" if subquestion_prefix in q else subquestion_prefix + " " + q + "\n")
+                f.write(
+                    self.prompt["subquestion_prefix"].format(idx=self.n_shots + 1, sub_idx=idx + 1) + " " + q + "\n")
                 f.write(self.prompt["answer_prefix"].format(idx=self.n_shots + 1, sub_idx=idx + 1) + " " + a + "\n")
-            subquestion_prefix = self.prompt["subquestion_prefix"].format(idx=self.n_shots + 1, sub_idx=len(state) + 1)
-            f.write(action + "\n" if subquestion_prefix in action else subquestion_prefix + " " + action + "\n")
+            f.write(self.prompt["subquestion_prefix"].format(idx=self.n_shots + 1,
+                                                             sub_idx=len(state) + 1) + " " + action + "\n")
             f.write(self.prompt["answer_prefix"].format(idx=self.n_shots + 1, sub_idx=len(state) + 1))
             model_input = f.getvalue()
         
@@ -93,33 +91,16 @@ class GSM8kWorldModel(WorldModel[GSM8kState, GSM8kAction, GSM8kExample]):
         result = ""
         for start1 in range(0, self.n_confidence, self.early_stop_base):
             stop1 = min(start1 + self.early_stop_base, self.n_confidence)
-            futures = []
-            for start in range(start1, stop1, self.batch_size):
-                stop = min(start + self.batch_size, stop1)
-                num = stop - start
-                # outputs = self.base_model.generate([model_input] * num,
-                #                                    temperature=self.temperature,
-                #                                    top_k=self.top_k,
-                #                                    top_p=self.top_p,
-                #                                    eos_token_id='\n').text
-                # for output in outputs:
-                #     result = output.strip()
-                #     answer = utils.retrieve_answer(result)               
-                #     answer_dict[answer].append(result)
-                futures.append(self.executor.submit(
-                    self.base_model.generate,
-                    [model_input] * num,
-                    temperature=self.temperature,
-                    top_k=self.top_k,
-                    top_p=self.top_p,
-                    eos_token_id='\n'
-                ))
-            for future in futures:
-                outputs = future.result().text
-                for output in outputs:
-                    result = output.strip()
-                    answer = utils.retrieve_answer(result)               
-                    answer_dict[answer].append(result)
+            outputs = self.base_model.generate(model_input,
+                                                num_return_sequences=self.n_confidence,
+                                                temperature=self.temperature,
+                                                top_k=self.top_k,
+                                                top_p=self.top_p,
+                                                eos_token_id='\n').text
+            for output in outputs:
+                result = output.strip()
+                answer = utils.retrieve_answer(result)               
+                answer_dict[answer].append(result)
 
             # Early stop if confidence is high enough
             if len(answer_dict) == 0:  # no answer yet
